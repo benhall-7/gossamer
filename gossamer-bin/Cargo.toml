@@ -1,0 +1,16 @@
+[package]
+name = "gossamer-bin"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gossamer = { path = "../" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+hyper = { version = "1", features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = [
+    "tokio",
+    "server",
+    "http1",
+    "http2",
+] }
+serde = { version = "1", features = ["derive"] }

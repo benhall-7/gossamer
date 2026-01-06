@@ -1,0 +1,22 @@
+[package]
+name = "gossamer"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = ["gossamer-bin"]
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+hyper = { version = "1", features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = [
+    "tokio",
+    "server",
+    "http1",
+    "http2",
+] }
+http-body-util = "0.1"
+bytes = "1"
+serde = "1.0.228"
+serde_json = "1.0.148"
+serde_urlencoded = "0.7.1"
