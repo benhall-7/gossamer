@@ -1,4 +1,79 @@
+use crate::{MetaBuilder, RouteInfo};
+
+use hyper::http::Method;
 use std::collections::BTreeMap;
+
+#[derive(Debug)]
+pub struct OpenApiAcc {
+    pub doc: OpenApiDoc,
+}
+
+impl OpenApiAcc {
+    pub fn new(title: impl Into<String>, version: impl Into<String>) -> Self {
+        Self {
+            doc: OpenApiDoc {
+                openapi: "3.0.3".to_string(),
+                info: Info {
+                    title: title.into(),
+                    version: version.into(),
+                },
+                paths: BTreeMap::new(),
+            },
+        }
+    }
+}
+
+impl MetaBuilder for OpenApiAcc {
+    type Finish = OpenApiDoc;
+
+    fn on_route(&mut self, info: &RouteInfo) {
+        let path = info.pattern.clone(); // already canonical: "/echo/{phrase}"
+
+        let method = match info.method {
+            Method::GET => HttpMethod::Get,
+            Method::POST => HttpMethod::Post,
+            Method::PUT => HttpMethod::Put,
+            Method::PATCH => HttpMethod::Patch,
+            Method::DELETE => HttpMethod::Delete,
+            Method::OPTIONS => HttpMethod::Options,
+            Method::HEAD => HttpMethod::Head,
+            _ => return, // or map extension methods
+        };
+
+        let mut op = Operation::default();
+
+        // Add path params as required string params (MVP default)
+        for p in &info.path_params {
+            op.parameters.push(Parameter {
+                name: p.clone(),
+                location: ParamLocation::Path,
+                required: true,
+                description: None,
+                schema: Schema::String,
+            });
+        }
+
+        // Add a default 200 response so the spec is valid
+        op.responses.insert(
+            "200".to_string(),
+            Response {
+                description: "OK".to_string(),
+                content: BTreeMap::new(),
+            },
+        );
+
+        self.doc
+            .paths
+            .entry(path)
+            .or_default()
+            .operations
+            .insert(method, op);
+    }
+
+    fn on_finish(self) -> OpenApiDoc {
+        self.doc
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct OpenApiDoc {

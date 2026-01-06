@@ -90,14 +90,14 @@ impl RouteParams {
     }
 
     pub fn require(&self, name: &str) -> Result<&str, Error> {
-        self.get(name).ok_or_else(|| Error::bad_request(format!("missing path param: {name}")))
+        self.get(name)
+            .ok_or_else(|| Error::bad_request(format!("missing path param: {name}")))
     }
 
     pub fn parse<T: FromStr>(&self, name: &str) -> Result<T, Error> {
         let s = self.require(name)?;
-        s.parse::<T>().map_err(|_| {
-            Error::bad_request(format!("invalid path param {name}: {s}"))
-        })
+        s.parse::<T>()
+            .map_err(|_| Error::bad_request(format!("invalid path param {name}: {s}")))
     }
 }
 
@@ -278,15 +278,24 @@ impl CompiledRoute {
     }
 }
 
-pub trait RouteMeta {
+pub trait MetaBuilder {
+    type Finish;
+
     fn on_route(&mut self, info: &RouteInfo);
+
+    fn on_finish(self) -> Self::Finish;
 }
 
 // Default no-op implementation
-impl RouteMeta for () {
-    fn on_route(&mut self, _: &RouteInfo) {}
-}
+impl MetaBuilder for () {
+    type Finish = ();
 
+    fn on_route(&mut self, _: &RouteInfo) {}
+
+    fn on_finish(self) -> () {
+        ()
+    }
+}
 
 struct Route<S> {
     method: Method,
@@ -296,7 +305,7 @@ struct Route<S> {
 
 pub struct RouterBuilder<S, M = ()> {
     state: Arc<S>,
-    meta: M,
+    meta_builder: M,
 
     static_routes: HashMap<(Method, String), Handler<S>>,
     param_routes: Vec<Route<S>>,
@@ -306,38 +315,27 @@ impl<S> RouterBuilder<S, ()> {
     pub fn new(state: S) -> Self {
         Self {
             state: Arc::new(state),
-            meta: (),
+            meta_builder: (),
             static_routes: HashMap::new(),
             param_routes: Vec::new(),
         }
     }
 }
 
-impl<S, M> RouterBuilder<S, M> {
-    pub fn with_meta<N>(self, meta: N) -> RouterBuilder<S, N> {
+impl<S, M> RouterBuilder<S, M>
+where
+    S: Send + Sync + 'static,
+    M: MetaBuilder,
+{
+    pub fn with_meta_builder<N>(self, meta_builder: N) -> RouterBuilder<S, N> {
         RouterBuilder {
             state: self.state,
-            meta,
+            meta_builder,
             static_routes: self.static_routes,
             param_routes: self.param_routes,
         }
     }
 
-    pub fn finish(self) -> (Router<S>, M) {
-        let router = Router {
-            state: self.state,
-            static_routes: self.static_routes,
-            param_routes: self.param_routes,
-        };
-        (router, self.meta)
-    }
-}
-
-impl<S, M> RouterBuilder<S, M>
-where
-    S: Send + Sync + 'static,
-    M: RouteMeta,
-{
     pub fn get<H, Fut, R>(self, pattern: &str, handler: H) -> Self
     where
         H: Fn(Ctx<S>) -> Fut + Send + Sync + 'static,
@@ -380,14 +378,13 @@ where
         Fut: std::future::Future<Output = Result<R, Error>> + Send + 'static,
         R: Into<GossamerResponse> + 'static,
     {
-        let compiled = CompiledRoute::compile(pattern)
-            .expect("invalid route pattern");
+        let compiled = CompiledRoute::compile(pattern).expect("invalid route pattern");
 
         // Build RouteInfo once, derived from compiled route.
         let info = RouteInfo::from_compiled(method.clone(), &compiled);
 
         // Fold meta
-        self.meta.on_route(&info);
+        self.meta_builder.on_route(&info);
 
         // Erase handler to your stored Handler<S>
         let erased: Handler<S> = Arc::new(move |ctx: Ctx<S>| {
@@ -399,12 +396,27 @@ where
         });
 
         if compiled.is_static {
-            self.static_routes.insert((method, compiled.pattern.clone()), erased);
+            self.static_routes
+                .insert((method, compiled.pattern.clone()), erased);
         } else {
-            self.param_routes.push(Route { method, compiled, handler: erased });
+            self.param_routes.push(Route {
+                method,
+                compiled,
+                handler: erased,
+            });
         }
 
         self
+    }
+
+    pub fn finish(self) -> (Router<S>, M::Finish) {
+        let router = Router {
+            state: self.state,
+            static_routes: self.static_routes,
+            param_routes: self.param_routes,
+        };
+        let meta = self.meta_builder.on_finish();
+        (router, meta)
     }
 }
 
