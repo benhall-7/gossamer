@@ -58,7 +58,7 @@ checksum = "e575fab7d1e0dcb8d0c7bcf9a63ee213816ab51902e6d244a95819acacf1d4f7"
 
 [[package]]
 name = "gossamer"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bytes",
  "http-body-util",
@@ -67,17 +67,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
- "tokio",
-]
-
-[[package]]
-name = "gossamer-bin"
-version = "0.1.0"
-dependencies = [
- "gossamer",
- "hyper",
- "hyper-util",
- "serde",
  "tokio",
 ]
 
@@ -274,6 +263,17 @@ name = "ryu"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a50f4cf475b65d88e057964e0e9bb1f0aa9bbb2036dc65c64596b42932536984"
+
+[[package]]
+name = "sample"
+version = "0.1.0"
+dependencies = [
+ "gossamer",
+ "hyper",
+ "hyper-util",
+ "serde",
+ "tokio",
+]
 
 [[package]]
 name = "serde"
