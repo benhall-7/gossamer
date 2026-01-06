@@ -1,6 +1,6 @@
 # Gossamer
 
-A lightweight, experimental HTTP web server.
+A lightweight, experimental HTTP web server framework.
 
 ## Design philosophy
 
