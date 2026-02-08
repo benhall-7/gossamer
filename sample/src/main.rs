@@ -1,12 +1,15 @@
 // gossamer-examples/src/main.rs
-use std::{convert::Infallible, net::SocketAddr, sync::Arc};
+use std::convert::Infallible;
+use std::net::SocketAddr;
+use std::sync::{Arc, OnceLock};
 
 use hyper::service::service_fn;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use hyper_util::server::conn::auto;
 use tokio::net::TcpListener;
 
-use gossamer::{Ctx, Error, RouterBuilder};
+use gossamer::openapi::{OpenApiAcc, serde_json};
+use gossamer::{Ctx, Error, GossamerResponse, Router, RouterBuilder};
 
 async fn ping<S>(_ctx: Ctx<S>) -> Result<&'static str, Error> {
     Ok("pong")
@@ -27,19 +30,51 @@ async fn echo<S>(ctx: Ctx<S>) -> Result<String, Error> {
     Ok(phrase.to_string())
 }
 
+async fn openapi(ctx: gossamer::Ctx<AppState>) -> Result<GossamerResponse, gossamer::Error> {
+    let state = ctx.state();
+    let bytes = state
+        .openapi_json
+        .get()
+        .ok_or_else(|| gossamer::Error::bad_request("OpenAPI not initialized"))?;
+
+    Ok(gossamer::JsonBytes(bytes.clone()).into())
+}
+
+struct AppState {
+    openapi_json: OnceLock<Vec<u8>>,
+}
+
+fn build_router() -> Router<AppState> {
+    let state = AppState {
+        openapi_json: OnceLock::new(),
+    };
+
+    let (router, openapi) = RouterBuilder::new(state)
+        .with_meta_builder(OpenApiAcc::new("Gossamer API", "0.1.0"))
+        .get("/ping", ping)
+        .get("/echo/{phrase}", echo)
+        .get("/openapi.json", openapi)
+        .finish();
+
+    let openapi_json = serde_json::to_vec_pretty(&openapi).expect("Failed to serialize OpenAPI doc");
+
+    router
+        .state()
+        .openapi_json
+        .set(openapi_json)
+        .expect("Failed to set OpenAPI JSON in state");
+
+    router
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = TcpListener::bind(addr).await?;
-    println!("listening on http://{addr}");
 
-    let app = Arc::new(
-        RouterBuilder::new(())
-            .get("/ping", ping::<()>)
-            .get("/echo/{phrase}", echo::<()>)
-            .finish()
-            .0,
-    );
+    let app = Arc::new(build_router());
+
+    println!("listening on http://{addr}");
 
     loop {
         let (stream, _) = listener.accept().await?;

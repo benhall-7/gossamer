@@ -1,7 +1,10 @@
 use crate::{MetaBuilder, RouteInfo};
 
 use hyper::http::Method;
+use serde::Serialize;
 use std::collections::BTreeMap;
+
+pub use serde_json;
 
 #[derive(Debug)]
 pub struct OpenApiAcc {
@@ -20,6 +23,10 @@ impl OpenApiAcc {
                 paths: BTreeMap::new(),
             },
         }
+    }
+
+    pub fn to_json_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(&self.doc)
     }
 }
 
@@ -66,8 +73,7 @@ impl MetaBuilder for OpenApiAcc {
             .paths
             .entry(path)
             .or_default()
-            .operations
-            .insert(method, op);
+            .set_operation(method, op);
     }
 
     fn on_finish(self) -> OpenApiDoc {
@@ -75,7 +81,7 @@ impl MetaBuilder for OpenApiAcc {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct OpenApiDoc {
     // "3.0.3" or "3.1.0"
     pub openapi: String,
@@ -83,29 +89,63 @@ pub struct OpenApiDoc {
     pub paths: BTreeMap<String, PathItem>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Info {
     pub title: String,
     pub version: String,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct PathItem {
-    pub operations: BTreeMap<HttpMethod, Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub get: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub put: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patch: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delete: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<Operation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub head: Option<Operation>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+impl PathItem {
+    pub fn set_operation(&mut self, method: HttpMethod, op: Operation) {
+        match method {
+            HttpMethod::Get => self.get = Some(op),
+            HttpMethod::Post => self.post = Some(op),
+            HttpMethod::Put => self.put = Some(op),
+            HttpMethod::Patch => self.patch = Some(op),
+            HttpMethod::Delete => self.delete = Some(op),
+            HttpMethod::Options => self.options = Some(op),
+            HttpMethod::Head => self.head = Some(op),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum HttpMethod {
+    #[serde(rename = "get")]
     Get,
+    #[serde(rename = "post")]
     Post,
+    #[serde(rename = "put")]
     Put,
+    #[serde(rename = "patch")]
     Patch,
+    #[serde(rename = "delete")]
     Delete,
+    #[serde(rename = "options")]
     Options,
+    #[serde(rename = "head")]
     Head,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct Operation {
     pub operation_id: Option<String>,
     pub summary: Option<String>,
@@ -116,7 +156,7 @@ pub struct Operation {
     pub responses: BTreeMap<String, Response>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Parameter {
     pub name: String,
     // path/query
@@ -126,31 +166,31 @@ pub struct Parameter {
     pub schema: Schema,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum ParamLocation {
     Path,
     Query,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct RequestBody {
     pub required: bool,
     // "application/json"
     pub content: BTreeMap<String, MediaType>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Response {
     pub description: String,
     pub content: BTreeMap<String, MediaType>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MediaType {
     pub schema: Schema,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum Schema {
     // MVP: primitives + “unknown”
     Any,
@@ -163,13 +203,13 @@ pub enum Schema {
     Object,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum IntegerFormat {
     Int32,
     Int64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum NumberFormat {
     Float,
     Double,

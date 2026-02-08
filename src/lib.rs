@@ -466,6 +466,10 @@ impl<S: Send + Sync + 'static> Router<S> {
 
         error_response(Error::not_found())
     }
+
+    pub fn state(&self) -> Arc<S> {
+        self.state.clone()
+    }
 }
 
 // ---- response helpers ----
@@ -480,6 +484,25 @@ pub fn text_response(status: StatusCode, s: impl Into<String>) -> HttpResponse {
     r
 }
 
+pub fn bytes_response(status: StatusCode, b: Bytes, content_type: &'static str) -> HttpResponse {
+    let mut r = Response::new(boxed_full(b));
+    *r.status_mut() = status;
+    r.headers_mut().insert(
+        hyper::header::CONTENT_TYPE,
+        hyper::header::HeaderValue::from_static(content_type),
+    );
+    r
+}
+
 fn error_response(e: Error) -> HttpResponse {
     text_response(e.status, e.message)
+}
+
+pub struct JsonBytes(pub Vec<u8>);
+
+impl From<JsonBytes> for GossamerResponse {
+    fn from(j: JsonBytes) -> Self {
+        let resp = bytes_response(StatusCode::OK, Bytes::from(j.0), "application/json");
+        GossamerResponse(resp)
+    }
 }
